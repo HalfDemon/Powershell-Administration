@@ -7,6 +7,8 @@ automate a, seriously, repetitive task such as installing java, or
 removing and rebuilding someones profile on a host. Some 'commandlets'
 will accept further input beyond just a system name such as a 
 filename to read multiple hostsnames out of to execute commands on.
+Please note that this is VERY beta and is far from complete. Bad things
+could very easily happen if you have no idea what you're doing.
 #>
 
 
