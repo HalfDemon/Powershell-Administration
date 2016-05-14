@@ -11,11 +11,6 @@ Please note that this is VERY beta and is far from complete. Bad things
 could very easily happen if you have no idea what you're doing.
 #>
 
-<#
-Notes:
-Add rdp to baseline, multi dc lookup, 
-#>
-
 
 $app=$args[0]
 $system=$args[1]
@@ -204,54 +199,4 @@ function Clean-Temp-Multi
 		}
 		echo "$_	$status 	$LASTEXITCODE" >> $file-result.csv
 	}
-}
-function Test-RemoteConnectivity
-{
-	[CmdletBinding()]
-	param()
-	$pDestination = Read-Host -Prompt 'Destination Machine:'
-	$pFile = Read-Host -Prompt 'Hoppping Point File:'
-	$pResult = Read-Host -Prompt 'Result File:'
-	$reach = 0
-	write-host Checking remote networks for connectivity to $pDestination
-	get-content $pfile | foreach-object {
-		if (ping -n 2 -w 300 $_ | Select-String -pattern 'TTL')
-		{
-			if (.\psexec -h -s \\$_ ping -n 3 -w 300 $pDestination | select-string -pattern TTL)
-			{
-				write-host The network that $_ is on can reach $pDestination
-				echo ("The network that $_ is on can reach $pDestination ") >> $pResult
-				$reach++
-			}
-		}
-	}
-	
-	write-host $reach networks can reach $pDestination >> $pResult
-}
-function Config-Service
-{
-	[CmdletBinding()]
-	param ()
-	#TODO: Place script here
-	$action = Read-Host -Prompt 'Set Service as Automatic, Manual, Disabled:'
-	$service = Read-Host -Prompt 'Service:'
-	$system = Read-Host -Prompt 'Host:'
-	write-host ("Setting StatupType of $service to $action on $system")
-	if ($action -eq "Manual")
-	{
-		Set-Service -computername $system $service -StartupType $action
-		(get-service -computername $system -name $service).Start()
-	}
-	if ($action -eq "Automatic")
-	{
-		Set-Service -computername $system $service -StartupType $action
-		(get-service -computername $system -name $service).Start()
-	}
-	if ($action -eq "Disabled")
-	{
-		(get-service -computername $system -name $service).Stop()
-		Set-Service -computername $system $service -StartupType $action
-	}
-	write-host ("Getting startup option of $service on $system")
-	gwmi win32_service -computername $system | where { $_.Name -eq ("$service") }
 }
