@@ -128,3 +128,75 @@ function Java-Multi
 		echo f | .\psexec \\$jHostname -h -s reg import "c:\staged\java\java.reg"
 	}
 }
+function Assist
+{
+	[CmdletBinding()]
+	param
+	(
+		$pComputer
+	)
+	#TODO: Place script here
+	msra /offerra $pComputer
+	
+}
+function Clean-Temp
+{
+	[CmdletBinding()]
+	param
+	()
+	#TODO: Place script here
+	[int]$xMenuChoiceA = 0
+	while ($xMenuChoiceA -lt 1 -or $xMenuChoiceA -gt 2)
+	{
+		Write-host "1. Single"
+		Write-host "2. Multi"
+		[Int]$xMenuChoiceA = read-host "Please enter an option 1 or 2"
+	}
+	Switch ($xMenuChoiceA)
+	{
+		1{ Clean-Temp-Single }
+		2{ Clean-Temp-Multi }
+		default { Clean-Temp-Single }
+	}
+}
+function Clean-Temp-Single
+{
+	[CmdletBinding()]
+	param ()
+	#TODO: Place script here
+	$pComputer = Read-Host -Prompt 'Hostname:'
+	.\psexec  -s -h \\$pComputer powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*;
+}
+function Clean-Temp-Multi
+{
+	[CmdletBinding()]
+	param ()
+	#TODO: Place script here
+	$pFile = Read-Host -Prompt 'Multi-Host FileName:'
+	get-content $file | foreach-object {
+		Write-Host ' '
+		.\psexec  -s -h \\$_ powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*
+		##It's ugly but this section checks the exit code of PSEXEC, if it's anything other than 1 or 0 it sets it to fail.
+		if ($LASTEXITCODE -ge '2')
+		{
+			$status = 'Fail'
+		}
+		if ($LASTEXITCODE -eq '1264')
+		{
+			$status = 'Auth Fail'
+		}
+		if ($LASTEXITCODE -eq '1')
+		{
+			$status = 'Success'
+		}
+		if ($LASTEXITCODE -eq '0')
+		{
+			$status = 'Success'
+		}
+		if ($LASTEXITCODE -eq '53')
+		{
+			$status = 'Admin$ Share'
+		}
+		echo "$_	$status 	$LASTEXITCODE" >> $file-result.csv
+	}
+}
