@@ -13,7 +13,7 @@ could very easily happen if you have no idea what you're doing.
 
 <#
 Notes:
-Add rdp to baseline, multi dc lookup, 
+multi dc lookup, 
 #>
 
 
@@ -31,6 +31,8 @@ function Check
 	If ($contest -eq $null)
 	{
 		Write-Host Cannot reach $system
+		Write-Host Performing lookup
+		Write-Host ''
 		nslookup $system
 	}
 	Else
@@ -47,6 +49,7 @@ function Install-Baseline
 	write-host ("Copying Baseline to $system ")
 	xcopy Baseline ("\\$system\C$\staged\Baseline\") /e /c /h /y /z
 	set-location 'c:\scripts'
+	mstsc -v $system -f
 }
 function Get-AppVersion
 {
