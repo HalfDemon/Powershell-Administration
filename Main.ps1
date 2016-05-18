@@ -16,10 +16,6 @@ Notes:
 multi dc lookup, 
 #>
 
-
-$app=$args[0]
-$system=$args[1]
-$type=$args[2]
 function Check
 {
 	[CmdletBinding()]
