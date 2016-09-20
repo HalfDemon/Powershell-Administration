@@ -58,7 +58,12 @@ Set-Location "C:\Staging\"
 }
 Function SysReq{
     #Requests system name from user as a function instead of rewriting each time
-    Set-Variable -name System -Value  (Read-Host "System Name") -Scope Global
+    If ( $args[0] -eq $null ){
+        Set-Variable -name System -Value  (Read-Host "System Name") -Scope Global
+    }
+    ELSE{
+        Set-Variable -name System -Value $args[0] -scope global
+    }
 }
 Function TestCon{
     $test = Test-Connection -ComputerName $System -Count 2 -ErrorAction SilentlyContinue
@@ -70,14 +75,14 @@ Set-Location "C:\Scripts\"
 #End Env Variable Setup
 #Begin Work Functions
 Function Assist{
-    SysReq
+    SysReq $args[0]
     msra -offerra $System
 }
 Function Backup{
     INSERTBACKUPSCRIPTHERE
 }
 Function Check-Computer{
-    SysReq
+    SysReq $args[0]
     $System = $System
     Write-Host Destination System: $System
     Write-Host If output is null or empty please check the hostname and try again
@@ -93,7 +98,7 @@ Function Check-Computer{
     }
 }
 Function Clean-Temp{
-    SysReq
+    SysReq $args[0]
     .\PsExec.exe -s -h \\$System powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*;
 }
 Function Clean-TempLocal{
@@ -120,13 +125,13 @@ Function Expand-ZipFile{
     }
 }
 Function Get-BitlockerRecoveryKey{
-    SysReq
+    SysReq $args[0]
     $computer = Get-ADComputer -Filter {Name -eq $System}
     $BitLockerObjects = Get-ADObject -Filter {objectclass -eq 'msFVE-RecoveryInformation'} -SearchBase $computer.DistinguishedName =Properties 'msFVE-RecoveryPassword'
     $BitLockerObjects | Select-Object @{N='Recovery Key ID';E={($_.DistinguishedName).Substring(29,36)}},msFVE-RecoveryPassword
 }
 Function Get-InstalledSoftware{
-    SysReq
+    SysReq $args[0]
     .\PsExec -s -h \\$System > $LogLocation\psinfo-Installed.log
     Nano $LogLocation\psinfo-Installed.log
 }
@@ -135,7 +140,7 @@ Function Get-SMARTStatus{
 }
 Function Install-Baseline{
     Set-Staging
-    SysReq
+    SysReq $args[0]
     $System = $System
     $cItem = "Baseline"
     Write-Host Copying Baseline to $System
@@ -145,7 +150,7 @@ Function Install-Baseline{
     Cleanup
 }
 Function Install-Java{
-    SysReq
+    SysReq $args[0]
     $cItem = 'Java'
     $Major = Read-Host 'Java Major Revision'
     $Minor = Read-Host 'Java Minor Revision'
@@ -166,11 +171,11 @@ Function Open-AdminFileDialog{
     $fd.FileNames
 }
 Function RDP{
-    SysReq
+    SysReq $args[0]
     mstsc -v $System
 }
 Function Set-EventLogRetention{
-    SysReq
+    SysReq $args[0]
     wevtutil sl Application /rt:false /r:$System
 }
 Function Sync-Image{
