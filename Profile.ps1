@@ -28,7 +28,13 @@ if ( $act -eq "Start" ){
 Function MultiReq{
     #Set $Multi to null and then request filename for multiple or enter for single
     #if enter is hit without text it is left null and will return null when value is queried
-    Set-Variable -Name Multi -Value (Read-Host "Please enter multi filename") -Option Constant -Scope Global
+    If ( $args[0] -eq $null ){
+        Set-Variable -Name Multi -Value (Read-Host "Please enter multi filename") -Option Constant -Scope Global
+    }
+    ELSE{
+        Set-Variable -name System -Value $args[0] -scope global
+    }
+    
 }
 Function PsExecExit{
     #A bit ugly but necessary
@@ -105,7 +111,7 @@ Function Clean-TempLocal{
     Remove-Item -Recurse -Force C:\Windows\Temp\*
 }
 Function Clean-TempMulti{
-    MultiReq
+    MultiReq $args[0]
     Get-Content $Multi | ForEach-Object {
         $System = $_
         .\PsExec.exe -s -h \\$System powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*;
