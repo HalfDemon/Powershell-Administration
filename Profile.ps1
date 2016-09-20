@@ -1,4 +1,4 @@
-#Setup Reusable Functions
+﻿#Setup Reusable Functions
 Function Cleanup{
     #Script Cleanup
     Write-Host Cleaning Up
@@ -33,7 +33,6 @@ Function MultiReq{
 Function PsExecExit{
     #A bit ugly but necessary
     #This function checks the psexec exit codes and writes them to a result file based on multi
-    #This section is subject to random additions as more errors are experienced
     if ($LastPsExecCode -ge '2'){
         $Status = 'Fail'
     }
