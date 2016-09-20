@@ -1,256 +1,182 @@
-<#
-Much of this code is still from what I consider my 'legacy scripts'.
-I am working on converting it to as pure powershell as possible and
-then importing everything into my powershell profile. Everything in
-here comes from some sort of need at work to at least partially
-automate a, seriously, repetitive task such as installing java, or 
-removing and rebuilding someones profile on a host. Some 'commandlets'
-will accept further input beyond just a system name such as a 
-filename to read multiple hostsnames out of to execute commands on.
-Please note that this is VERY beta and is far from complete. Bad things
-could very easily happen if you have no idea what you're doing.
-#>
-
-<#
-Notes:
-multi dc lookup, 
-#>
-
-function Check
-{
-	[CmdletBinding()]
-	param()
-	$system = Read-Host -Prompt 'Destination System:'
-	Write-Host If Output is null or empty please check hostname and try again
-	Get-ADComputer -filter { name -like $system } | select DistinguishedName, Enabled, DNSHostName | Format-List
-	$contest = Test-Connection -ComputerName $system -Count 2
-	If ($contest -eq $null)
-	{
-		Write-Host Cannot reach $system
-		Write-Host Performing lookup
-		Write-Host ''
-		nslookup $system
-	}
-	Else
-	{
-		gwmi win32_computersystem -comp $system | select Username
-	}
+#Setup Reusable Functions
+Function Cleanup{
+    #Script Cleanup
+    Write-Host Cleaning Up
+    $Multi = $null
+    $MultiV = $null
+    $MultiReq = $null
+    $System = $null
 }
-function Install-Baseline
-{
-	[CmdletBinding()]
-	param()
-	$system = Read-Host -Prompt 'Destination System:'
-	set-location 'c:\staging\'
-	write-host ("Copying Baseline to $system ")
-	xcopy Baseline ("\\$system\C$\staged\Baseline\") /e /c /h /y /z
-	set-location 'c:\scripts'
-	mstsc -v $system -f
+Function Copy-RemoteSystem{
+    Set-Staging
+    Write-Host Copying $cItem to $System 
+    xcopy $cItem ("\\$System\C$\Staged\") /e /c /h /y /z
+    Set-Home
 }
-function Get-AppVersion
-{
-	[CmdletBinding()]
-	param ()
-	$system = Read-Host -Prompt 'Destination System:'
-	dir ("\\$system\C$\Program Files\Java\") >> C:\Logs\Version-$system.txt
-	dir ("\\$system\C$\Program Files (X86)\Java\") >> C:\Logs\Version-$system.txt
-	dir ("\\$system\C$\Program Files\") >> C:\Logs\Version-$system.txt
-	dir ("\\$system\C$\Program Files (X86)\") >> C:\Logs\Version-$system.txt
-	notepad C:\Logs\Version-$system.txt
+Function Manage-Services{
+if ( $act -eq "Restart" ){
+    Stop-Service -InputObject $(Get-Service -ComputerName $System -Name $ServiceName)
+    Start-Service -InputObject $(Get-Service -ComputerName $System -Name $ServiceName)
+    }
+if ( $act -eq "Stop" ){
+    Stop-Service -InputObject $(Get-Service -ComputerName $System -Name $ServiceName)
+    }
+if ( $act -eq "Start" ){
+    Start-Service -InputObject $(Get-Service -ComputerName $System -Name $ServiceName)
+    }
 }
-function Get-Installed
-{
-	[CmdletBinding()]
-	param ()
-	$system = Read-Host -Prompt 'Destination System:'
-	set-location 'c:\scripts\'
-	.\psinfo -h -s \\$system > C:\logs\psinfo-$system.txt
-	nano C:\logs\psinfo-$system.txt
+Function MultiReq{
+    #Set $Multi to null and then request filename for multiple or enter for single
+    #if enter is hit without text it is left null and will return null when value is queried
+    Set-Variable -Name Multi -Value (Read-Host "Please enter multi filename") -Option Constant -Scope Global
 }
-function Get-UserSize
-{
-	[CmdletBinding()]
-	param ()
-	$system = Read-Host -Prompt 'Destination System:'
-	$colItems = (get-childitem \\$system\C$\users\ -recurse | measure-object -property length -sum)
-	"{0:N2}" -f ($colItems.sum / 1MB) + " MB"
+Function PsExecExit{
+    #A bit ugly but necessary
+    #This function checks the psexec exit codes and writes them to a result file based on multi
+    #This section is subject to random additions as more errors are experienced
+    if ($LastPsExecCode -ge '2'){
+        $Status = 'Fail'
+    }
+    if ($LastPsExecCode -eq '1264'){
+        $Status = 'Auth Fail'
+    }
+    if ($LastPsExecCode -eq '1'){
+        $Status = 'Success'
+    }
+    if ($LastPsExecCode -eq '0'){
+        $Status = 'Success'
+    }
+    if ($LastPsExecCode -eq '53'){
+        $Status -eq 'Admin$ Share'
+    }
+    echo "$System	$Status	$LastPsExecCode" >> $Multi-Result.csv
 }
-function Install-Java
-{
-	[CmdletBinding()]
-	param
-	(
-		$PMulti
-	)
-	$major = Read-Host -Prompt 'Java Major Revision:'
-	$minor = Read-Host -Prompt 'Java Minor Revision'
-	
-	[int]$xMenuChoiceA = 0
-	while ($xMenuChoiceA -lt 1 -or $xMenuChoiceA -gt 2)
-	{
-		Write-host "1. Single"
-		Write-host "2. Multi"
-		[Int]$xMenuChoiceA = read-host "Please enter an option 1 or 2"
-	}
-	Switch ($xMenuChoiceA)
-	{
-		1{Java-Single}
-		2{Java-Multi}
-		default {Java-Single}
-	}
+Function Set-Home{
+Set-Location "C:\Scripts\"
 }
-function Java-Single
-{
-	[CmdletBinding()]
-	param ()
-	
-	$system = Read-Host -Prompt 'Destination System:'
-	$major = Read-Host -Prompt 'Java Major Revision:'
-	$minor = Read-Host -Prompt 'Java Minor Revision'
-	set-location 'c:\staging\'
-	write-host Java
-	xcopy java ("\\$system\C$\staged\Java\") /e /c /h /y /z
-	set-location 'c:\scripts\'
-	.\psexec.exe \\$system -h -s c:\staged\java\jre$major-$minor-x86.exe /s
-	.\psexec.exe \\$system -h -s c:\staged\java\jre$major-$minor-x64.exe /s
-	echo f | .\psexec \\$system -h -s reg import "c:\staged\java\java.reg"
+Function Set-Staging{
+Set-Location "C:\Staging\"
 }
-function Java-Multi
-{
-	[CmdletBinding()]
-	param ()
-	Write-Host 'Multiple Hosts will be targeted'
-	$jMultiFile = Read-Host -Prompt 'File with hostnames:'
-	foreach ($jHostname in Get-Content $jMultiFile )
-	{
-		set-location 'c:\staging\'
-		write-host Java
-		xcopy java ("\\$jHostname\C$\staged\Java\") /e /c /h /y /z
-		set-location 'c:\scripts\'
-		.\psexec.exe \\$jHostname -h -s c:\staged\java\jre$major-$minor-x86.exe /s
-		.\psexec.exe \\$jHostname -h -s c:\staged\java\jre$major-$minor-x64.exe /s
-		echo f | .\psexec \\$jHostname -h -s reg import "c:\staged\java\java.reg"
-	}
+Function SysReq{
+    #Requests system name from user as a function instead of rewriting each time
+    Set-Variable -name System -Value  (Read-Host "System Name") -Scope Global
 }
-function Assist
-{
-	[CmdletBinding()]
-	param
-	(
-		$pComputer
-	)
-	#TODO: Place script here
-	msra /offerra $pComputer
-	
+Function TestCon{
+    $test = Test-Connection -ComputerName $System -Count 2 -ErrorAction SilentlyContinue
+    Return $test
 }
-function Clean-Temp
-{
-	[CmdletBinding()]
-	param
-	()
-	#TODO: Place script here
-	[int]$xMenuChoiceA = 0
-	while ($xMenuChoiceA -lt 1 -or $xMenuChoiceA -gt 2)
-	{
-		Write-host "1. Single"
-		Write-host "2. Multi"
-		[Int]$xMenuChoiceA = read-host "Please enter an option 1 or 2"
-	}
-	Switch ($xMenuChoiceA)
-	{
-		1{ Clean-Temp-Single }
-		2{ Clean-Temp-Multi }
-		default { Clean-Temp-Single }
-	}
+#End Reusable Function Setup
+#Setup Environment Variables
+Set-Location "C:\Scripts\"
+#End Env Variable Setup
+#Begin Work Functions
+Function Assist{
+    SysReq
+    msra -offerra $System
 }
-function Clean-Temp-Single
-{
-	[CmdletBinding()]
-	param ()
-	#TODO: Place script here
-	$pComputer = Read-Host -Prompt 'Hostname:'
-	.\psexec  -s -h \\$pComputer powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*;
+Function Backup{
+    INSERTBACKUPSCRIPTHERE
 }
-function Clean-Temp-Multi
-{
-	[CmdletBinding()]
-	param ()
-	#TODO: Place script here
-	$pFile = Read-Host -Prompt 'Multi-Host FileName:'
-	get-content $file | foreach-object {
-		Write-Host ' '
-		.\psexec  -s -h \\$_ powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*
-		##It's ugly but this section checks the exit code of PSEXEC, if it's anything other than 1 or 0 it sets it to fail.
-		if ($LASTEXITCODE -ge '2')
-		{
-			$status = 'Fail'
-		}
-		if ($LASTEXITCODE -eq '1264')
-		{
-			$status = 'Auth Fail'
-		}
-		if ($LASTEXITCODE -eq '1')
-		{
-			$status = 'Success'
-		}
-		if ($LASTEXITCODE -eq '0')
-		{
-			$status = 'Success'
-		}
-		if ($LASTEXITCODE -eq '53')
-		{
-			$status = 'Admin$ Share'
-		}
-		echo "$_	$status 	$LASTEXITCODE" >> $file-result.csv
-	}
+Function Check-Computer{
+    SysReq
+    $System = $System
+    Write-Host Destination System: $System
+    Write-Host If output is null or empty please check the hostname and try again
+    Get-ADComputer -filter { name -like $System } | Select DistinguishedName, Enabled, DNSHostName | Format-List
+    If ( $TestCon -eq $null ){
+        Write-Host Cannot Reach $System
+        Write-Host Performing Lookup
+        Write-Host ''
+        nslookup $System
+    }
+    ELSE{
+        gwmi win32_computersystem -comp $System | select Username
+    }
 }
-function Test-RemoteConnectivity
-{
-	[CmdletBinding()]
-	param()
-	$pDestination = Read-Host -Prompt 'Destination Machine:'
-	$pFile = Read-Host -Prompt 'Hoppping Point File:'
-	$pResult = Read-Host -Prompt 'Result File:'
-	$reach = 0
-	write-host Checking remote networks for connectivity to $pDestination
-	get-content $pfile | foreach-object {
-		if (ping -n 2 -w 300 $_ | Select-String -pattern 'TTL')
-		{
-			if (.\psexec -h -s \\$_ ping -n 3 -w 300 $pDestination | select-string -pattern TTL)
-			{
-				write-host The network that $_ is on can reach $pDestination
-				echo ("The network that $_ is on can reach $pDestination ") >> $pResult
-				$reach++
-			}
-		}
-	}
-	
-	write-host $reach networks can reach $pDestination >> $pResult
+Function Clean-Temp{
+    SysReq
+    .\PsExec.exe -s -h \\$System powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*;
 }
-function Config-Service
-{
-	[CmdletBinding()]
-	param ()
-	#TODO: Place script here
-	$action = Read-Host -Prompt 'Set Service as Automatic, Manual, Disabled:'
-	$service = Read-Host -Prompt 'Service:'
-	$system = Read-Host -Prompt 'Host:'
-	write-host ("Setting StatupType of $service to $action on $system")
-	if ($action -eq "Manual")
-	{
-		Set-Service -computername $system $service -StartupType $action
-		(get-service -computername $system -name $service).Start()
-	}
-	if ($action -eq "Automatic")
-	{
-		Set-Service -computername $system $service -StartupType $action
-		(get-service -computername $system -name $service).Start()
-	}
-	if ($action -eq "Disabled")
-	{
-		(get-service -computername $system -name $service).Stop()
-		Set-Service -computername $system $service -StartupType $action
-	}
-	write-host ("Getting startup option of $service on $system")
-	gwmi win32_service -computername $system | where { $_.Name -eq ("$service") }
+Function Clean-TempLocal{
+    Remove-Item -Recurse -Force C:\Windows\Temp\*
+}
+Function Clean-TempMulti{
+    MultiReq
+    Get-Content $Multi | ForEach-Object {
+        $System = $_
+        .\PsExec.exe -s -h \\$System powershell -InputFormat None Remove-Item -Recurse -Force C:\Windows\Temp\*;
+        $LastPsExecCode = $LASTEXITCODE
+        PsExecExit
+    }
+    Cleanup
+}
+Function Expand-ZipFile{
+    MultiReq
+    $Destination = Read-Host 'Destination to unzip to'
+    $shell = New-Object -com shell.application
+    $zip = $shell.NameSpace($Multi)
+    foreach($item in $zip.items())
+    {
+        $shell.Namespace($Destination).copyhere($item)
+    }
+}
+Function Get-BitlockerRecoveryKey{
+    SysReq
+    $computer = Get-ADComputer -Filter {Name -eq $System}
+    $BitLockerObjects = Get-ADObject -Filter {objectclass -eq 'msFVE-RecoveryInformation'} -SearchBase $computer.DistinguishedName =Properties 'msFVE-RecoveryPassword'
+    $BitLockerObjects | Select-Object @{N='Recovery Key ID';E={($_.DistinguishedName).Substring(29,36)}},msFVE-RecoveryPassword
+}
+Function Get-InstalledSoftware{
+    SysReq
+    .\PsExec -s -h \\$System > $LogLocation\psinfo-Installed.log
+    Nano $LogLocation\psinfo-Installed.log
+}
+Function Get-SMARTStatus{
+    SMARTCOMMANDHERE
+}
+Function Install-Baseline{
+    Set-Staging
+    SysReq
+    $System = $System
+    $cItem = "Baseline"
+    Write-Host Copying Baseline to $System
+    Copy-RemoteSystem
+    Set-Home
+    RDP $System
+    Cleanup
+}
+Function Install-Java{
+    SysReq
+    $cItem = 'Java'
+    $Major = Read-Host 'Java Major Revision'
+    $Minor = Read-Host 'Java Minor Revision'
+    Copy-RemoteSystem
+    .\PsExec.exe -s -h \\$System c:\Staged\jre$Major-$Minor-x86.exe /s
+    .\PsExec.exe -s -h \\$System c:\Staged\jre$Major-$Minor-x64.exe /s
+    echo f | .\PsExec.exe -s -h \\$System reg import "C:\Staged\Java.reg"
+    Cleanup
+}
+Function Nano($File){
+    Notepad $File
+}
+Function Open-AdminFileDialog{
+    $fd = New-Object System.Windows.Forms.OpenFileDialog
+    $fd.InitialDirectory = 'C:\Scripts\Links\'
+    $fd.Multiselect = $true
+    $fd.ShowDialog()
+    $fd.FileNames
+}
+Function RDP{
+    SysReq
+    mstsc -v $System
+}
+Function Set-EventLogRetention{
+    SysReq
+    wevtutil sl Application /rt:false /r:$System
+}
+Function Sync-Image{
+    Robocopy 'Image Source' C:\Staging\Images\Boot\ /e /z
+}
+Function Sync-Updates{
+    Robocopy "C:\Staging\Image Updates" E:\Updates /mir
 }
