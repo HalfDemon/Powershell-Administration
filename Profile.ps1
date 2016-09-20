@@ -180,9 +180,18 @@ Function RDP{
     SysReq $args[0]
     mstsc -v $System
 }
+Function Reset-Server{
+
+}
 Function Set-EventLogRetention{
     SysReq $args[0]
     wevtutil sl Application /rt:false /r:$System
+}
+Function Start-Server{
+    
+}
+Function Stop-Server{
+
 }
 Function Sync-Image{
     Robocopy 'Image Source' C:\Staging\Images\Boot\ /e /z
